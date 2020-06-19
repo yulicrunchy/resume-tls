@@ -63,12 +63,12 @@ func TestClient(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv := tls.Server(sConn, &tls.Config{
-		Certificates: []tls.Certificate{pair},
+	cli := tls.Client(sConn, &tls.Config{
+		InsecureSkipVerify: true,
 	})
 
-	cli, err := Client(cConn, &tls.Config{
-		InsecureSkipVerify: true,
+	srv, err := Server(cConn, &tls.Config{
+		Certificates: []tls.Certificate{pair},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -80,12 +80,27 @@ func TestClient(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Loop of read write
-		for i := 0; i < 2; i++ {
+		for i := 0; i < 3; i++ {
+			if i == 1 {
+				t.Log("recreating TLS")
+				// Extract TLS state
+				state := srv.State()
+
+				// Resume client
+				srv, err = Server(cConn, &tls.Config{
+					Certificates: []tls.Certificate{pair},
+				}, state)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 			recv := make([]byte, 1024)
 			n, err := srv.Read(recv)
 			if err != nil {
 				t.Fatal(err)
 			}
+
+			t.Logf("received %s", string(recv))
 
 			if _, err := srv.Write(recv[:n]); err != nil {
 				t.Fatal(err)
@@ -114,24 +129,13 @@ func TestClient(t *testing.T) {
 		t.Errorf("messages missmatch: %s != %s", message, recv[:n])
 	}
 
-	// Extract TLS state
-	state := cli.State()
-
-	// Resume client
-	cli2, err := Client(cConn, &tls.Config{
-		InsecureSkipVerify: true,
-	}, state)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Test write and read on resumed client
-	if _, err := cli2.Write(message); err != nil {
+	if _, err := cli.Write(message); err != nil {
 		t.Fatal(err)
 	}
 
 	recv = make([]byte, 1024)
-	n, err = cli2.Read(recv)
+	n, err = cli.Read(recv)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
@@ -30,6 +31,18 @@ type Conn struct {
 	connBuffer   *bytes.Buffer
 	randBuffer   *bytes.Buffer
 	*tls.Conn
+}
+
+func (c *Conn) GetConn() *tls.Conn {
+	return c.Conn
+}
+
+// Server returns a resumable tls conn
+func Server(conn net.Conn, cfg *tls.Config, state *State) (*Conn, error) {
+	if state != nil {
+		return clientResume(conn, cfg, state)
+	}
+	return clientInitialize(conn, cfg), nil
 }
 
 // Client returs a resumable tls conn
@@ -64,7 +77,7 @@ func clientInitialize(conn net.Conn, cfg *tls.Config) *Conn {
 		overrideRand: ovRand,
 		connBuffer:   connBuf,
 		randBuffer:   randBuf,
-		Conn:         tls.Client(ovConn, cfg),
+		Conn:         tls.Server(ovConn, cfg),
 	}
 }
 
@@ -85,9 +98,9 @@ func clientResume(conn net.Conn, cfg *tls.Config, state *State) (*Conn, error) {
 	}
 	cfg.Rand = ovRand
 
-	cli := tls.Client(ovConn, cfg)
+	cli := tls.Server(ovConn, cfg)
 	if err := cli.Handshake(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("handshake er: %v", err)
 	}
 	ovRand.OverrideReader = nil
 	ovConn.OverrideReader = nil
